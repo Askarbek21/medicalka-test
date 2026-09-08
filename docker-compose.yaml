@@ -1,0 +1,87 @@
+services:
+
+  db:
+    image: postgres:17-alpine
+    container_name: social_db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    ports:
+      - '5432:5432'
+
+  redis:
+    image: redis:8-alpine
+    container_name: social_redis
+    restart: unless-stopped
+
+    ports:
+      - '6379:6379'
+
+  app:
+    build: .
+
+    container_name: social_app
+
+    env_file:
+      - .env.example
+
+    command: >
+      sh -c "
+      python manage.py migrate &&
+      python manage.py create_superuser_if_not_exists &&
+      python manage.py runserver 0.0.0.0:8000
+      "
+
+    volumes:
+      - .:/src
+
+    ports:
+      - '8000:8000'
+
+    depends_on:
+      - db
+      - redis
+
+  celery_worker:
+    build: .
+
+    container_name: social_celery_worker
+
+    env_file:
+      - .env.example
+
+    command: celery -A config worker -l info
+
+    volumes:
+      - .:/src
+
+    depends_on:
+      - db
+      - redis
+
+  celery_beat:
+    build: .
+
+    container_name: social_celery_beat
+
+    env_file:
+      - .env.example
+
+    command: celery -A config beat -l info
+
+    volumes:
+      - .:/src
+
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
